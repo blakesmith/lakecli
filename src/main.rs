@@ -10,24 +10,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Files {
-        table: String,
-    },
+    #[clap(about = "List files in the table")]
+    Files { table: String },
+    #[clap(about = "Show table history")]
     History {
         table: String,
 
         #[clap(long, default_value = None)]
         limit: Option<usize>,
     },
-    Metadata {
-        table: String,
-    },
-    Schema {
-        table: String,
-    },
-    Version {
-        table: String,
-    },
+    #[clap(about = "Print table metadata")]
+    Metadata { table: String },
+
+    #[clap(about = "Show table schema")]
+    Schema { table: String },
+
+    #[clap(about = "Print the current / latest table version number")]
+    Version { table: String },
 }
 
 #[tokio::main]

@@ -19,7 +19,7 @@
         {
           packages = {
             lakecli = naersk-lib.buildPackage {
-              src = ./src;
+              src = ./.;
             };
           };
           devShell = pkgs.mkShell {
