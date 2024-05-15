@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 #[command(propagate_version = true)]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 }
 
 #[derive(Subcommand)]
@@ -34,33 +34,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Some(Commands::Files { table }) => {
+        Commands::Files { table } => {
             let table = deltalake::open_table(&table).await?;
             let files: Vec<_> = table.get_file_uris()?.collect();
             println!("files: {:?}", files);
         }
-        Some(Commands::Schema { table }) => {
+        Commands::Schema { table } => {
             let table = deltalake::open_table(&table).await?;
             println!("schema: {:?}", table.schema());
         }
-        Some(Commands::Version { table }) => {
+        Commands::Version { table } => {
             let table = deltalake::open_table(&table).await?;
             println!("version: {}", table.version());
         }
-        Some(Commands::Metadata { table }) => {
+        Commands::Metadata { table } => {
             let table = deltalake::open_table(&table).await?;
             println!("metadata: {:?}", table.metadata()?);
         }
-        Some(Commands::History { table, limit }) => {
+        Commands::History { table, limit } => {
             let table = deltalake::open_table(&table).await?;
             let history = table.history(limit.clone()).await?;
             println!("history:");
             for commit in history {
                 println!("{:?}", commit);
             }
-        }
-        None => {
-            println!("No command");
         }
     }
 
