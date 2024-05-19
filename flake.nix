@@ -20,6 +20,11 @@
           packages = {
             lakecli = naersk-lib.buildPackage {
               src = ./.;
+              buildInputs = [] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin.apple_sdk; [
+                frameworks.CoreFoundation
+                frameworks.CoreServices
+                frameworks.SystemConfiguration
+              ]);
             };
           };
           devShell = pkgs.mkShell {
