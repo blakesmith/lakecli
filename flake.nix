@@ -17,7 +17,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
       in
         {
-          packages = {
+          packages = rec {
             lakecli = naersk-lib.buildPackage {
               src = ./.;
               buildInputs = [] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin.apple_sdk; [
@@ -26,6 +26,7 @@
                 frameworks.SystemConfiguration
               ]);
             };
+            default = lakecli;
           };
           devShell = pkgs.mkShell {
              packages = [
