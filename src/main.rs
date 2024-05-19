@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use deltalake::datafusion::prelude::SessionContext;
+use deltalake::{datafusion::prelude::SessionContext, kernel::StructType};
 use std::sync::Arc;
 
 #[derive(Parser)]
@@ -8,6 +8,18 @@ use std::sync::Arc;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+fn print_schema(schema: &StructType) {
+    println!("{0: <20} | {1: <8} | {2: <10}", "name", "type", "nullable");
+    println!("{0:-<20} + {1:-<8} + {2:-<10}", "", "", "");
+    for field in &schema.fields {
+        let data_type = format!("{}", field.data_type);
+        println!(
+            "{0: <20} | {1: <8} | {2: <10}",
+            field.name, data_type, field.nullable
+        );
+    }
 }
 
 #[derive(Subcommand)]
@@ -46,7 +58,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Schema { table } => {
             let table = deltalake::open_table(&table).await?;
-            println!("schema: {:?}", table.schema());
+            match table.schema() {
+                Some(schema) => print_schema(schema),
+                None => {
+                    println!("No schema found in delta table!");
+                }
+            }
         }
         Commands::Version { table } => {
             let table = deltalake::open_table(&table).await?;
