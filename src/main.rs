@@ -83,14 +83,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Query { table, query } => {
             println!("Executing query: {}", query);
-            let table = deltalake::open_table(&table).await?;
+            let table = Arc::new(deltalake::open_table(&table).await?);
             let ctx = SessionContext::new();
             let metadata = table.metadata()?;
-            if metadata.name.is_none() {
-                println!("Warning: Delta table has no name. Defaulting table to name: 't'");
+            if let Some(table_name) = &metadata.name {
+                ctx.register_table(table_name, table.clone())
+                    .expect("Failed to register table");
             }
-            let table_name = metadata.name.clone().unwrap_or("t".to_string());
-            ctx.register_table(&table_name, Arc::new(table))
+            // Always register table 't', for simplicity
+            ctx.register_table("t", table.clone())
                 .expect("Failed to register table");
             let dataframe = ctx.sql(&query).await?;
             dataframe.show().await?
