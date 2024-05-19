@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
-deltalake = { version = "0.17.3", features = ["deltalake-aws", "s3"] }
+deltalake = { version = "0.17.3", features = ["deltalake-aws", "s3", "datafusion"] }
 tokio = { version = "1.37.0", features = ["macros"] }

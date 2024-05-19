@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand};
+use deltalake::datafusion::prelude::SessionContext;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about)]
@@ -27,6 +29,9 @@ enum Commands {
 
     #[clap(about = "Print the current / latest table version number")]
     Version { table: String },
+
+    #[clap(about = "Query the table with a DataFusion query")]
+    Query { table: String, query: String },
 }
 
 #[tokio::main]
@@ -58,6 +63,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             for commit in history {
                 println!("{:?}", commit);
             }
+        }
+        Commands::Query { table, query } => {
+            println!("Executing query: {}", query);
+            let table = deltalake::open_table(&table).await?;
+            let ctx = SessionContext::new();
+            let metadata = table.metadata()?;
+            if metadata.name.is_none() {
+                println!("Warning: Delta table has no name. Defaulting table to name: 't'");
+            }
+            let table_name = metadata.name.clone().unwrap_or("t".to_string());
+            ctx.register_table(&table_name, Arc::new(table))
+                .expect("Failed to register table");
+            let dataframe = ctx.sql(&query).await?;
+            dataframe.show().await?
         }
     }
 
