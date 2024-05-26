@@ -50,6 +50,8 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    deltalake::aws::register_handlers(None);
+
     match &cli.command {
         Commands::Files { table } => {
             let table = deltalake::open_table(&table).await?;
