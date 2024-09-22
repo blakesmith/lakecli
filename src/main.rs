@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use deltalake::{
-    datafusion::{error::DataFusionError, prelude::SessionContext},
+    datafusion::{
+        common::DFSchema, dataframe::DataFrame, error::DataFusionError, prelude::SessionContext,
+    },
     kernel::StructType,
     DeltaTable, DeltaTableError,
 };
@@ -15,7 +17,7 @@ struct Cli {
     command: Commands,
 }
 
-fn print_schema(schema: &StructType) {
+fn print_delta_schema(schema: &StructType) {
     println!("{0: <20} | {1: <8} | {2: <10}", "name", "type", "nullable");
     println!("{0:-<20} + {1:-<8} + {2:-<10}", "", "", "");
     for field in &schema.fields {
@@ -23,6 +25,20 @@ fn print_schema(schema: &StructType) {
         println!(
             "{0: <20} | {1: <8} | {2: <10}",
             field.name, data_type, field.nullable
+        );
+    }
+}
+
+fn print_dataframe_schema(schema: &DFSchema) {
+    println!("{0: <20} | {1: <8} | {2: <10}", "name", "type", "nullable");
+    println!("{0:-<20} + {1:-<8} + {2:-<10}", "", "", "");
+    for field in schema.fields() {
+        let data_type = format!("{}", field.data_type());
+        println!(
+            "{0: <20} | {1: <8} | {2: <10}",
+            field.name(),
+            data_type,
+            field.is_nullable()
         );
     }
 }
@@ -40,23 +56,27 @@ impl Table {
                 let files: Vec<_> = delta_table.get_file_uris()?.collect();
                 println!("files: {:?}", files);
             }
-            other => {
-                println!("'files' call unsupported for: {:?}", other);
+            Table::Parquet { table_path } => {
+                let files = vec![table_path];
+                println!("files: {:?}", files);
             }
         }
 
         Ok(())
     }
 
-    pub async fn schema(&self) -> Result<(), Error> {
+    pub async fn schema(&self, ctx: &SessionContext) -> Result<(), Error> {
         match self {
             Table::Delta(delta_table) => match delta_table.schema() {
-                Some(schema) => print_schema(schema),
+                Some(schema) => print_delta_schema(schema),
                 None => {
                     println!("No schema found in delta table!");
                 }
             },
-            Table::Parquet { table_path: _ } => todo!(),
+            Table::Parquet { table_path: _ } => {
+                let dataframe = self.register_table(ctx).await?;
+                print_dataframe_schema(dataframe.schema());
+            }
         }
 
         Ok(())
@@ -75,13 +95,14 @@ impl Table {
         Ok(())
     }
 
-    pub async fn metadata(&self) -> Result<(), Error> {
+    pub async fn metadata(&self, ctx: &SessionContext) -> Result<(), Error> {
         match self {
             Table::Delta(delta_table) => {
                 println!("metadata: {:?}", delta_table.metadata()?);
             }
-            other => {
-                println!("'metadata' call unsupported for: {:?}", other);
+            Table::Parquet { table_path: _ } => {
+                let dataframe = self.register_table(ctx).await?;
+                println!("metadata: {:?}", dataframe.schema().metadata());
             }
         }
 
@@ -112,7 +133,7 @@ impl Table {
         Ok(())
     }
 
-    async fn register_table(&self, ctx: &SessionContext) -> Result<(), Error> {
+    async fn register_table(&self, ctx: &SessionContext) -> Result<DataFrame, Error> {
         match self {
             Table::Delta(delta_table) => {
                 let metadata = delta_table.metadata()?;
@@ -121,14 +142,14 @@ impl Table {
                 }
                 // Always register table 't', for simplicity
                 ctx.register_table("t", delta_table.clone())?;
+                ctx.table("t").await.map_err(|err| err.into())
             }
             Table::Parquet { table_path } => {
                 ctx.register_parquet("t", table_path, Default::default())
                     .await?;
+                ctx.table("t").await.map_err(|err| err.into())
             }
         }
-
-        Ok(())
     }
 }
 
@@ -163,7 +184,7 @@ async fn open_table(table_name: &str) -> Result<Table, Error> {
 enum Commands {
     #[clap(about = "List files in the table")]
     Files { table: String },
-    #[clap(about = "Show table history")]
+    #[clap(about = "Show table history. Currently for delta tables only")]
     History {
         table: String,
 
@@ -190,6 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     deltalake::aws::register_handlers(None);
+    let ctx = SessionContext::new();
 
     match &cli.command {
         Commands::Files { table } => {
@@ -198,7 +220,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Schema { table } => {
             let table = open_table(&table).await?;
-            table.schema().await?;
+            table.schema(&ctx).await?;
         }
         Commands::Version { table } => {
             let table = open_table(&table).await?;
@@ -206,7 +228,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Metadata { table } => {
             let table = open_table(&table).await?;
-            table.metadata().await?;
+            table.metadata(&ctx).await?;
         }
         Commands::History { table, limit } => {
             let table = open_table(&table).await?;
@@ -215,7 +237,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Query { table, query } => {
             let table_name = table;
             let table = open_table(&table_name).await?;
-            let ctx = SessionContext::new();
             table.query(&ctx, query).await?;
         }
     }
