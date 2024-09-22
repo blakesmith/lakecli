@@ -20,7 +20,7 @@ struct Cli {
 fn print_delta_schema(schema: &StructType) {
     println!("{0: <20} | {1: <8} | {2: <10}", "name", "type", "nullable");
     println!("{0:-<20} + {1:-<8} + {2:-<10}", "", "", "");
-    for field in &schema.fields {
+    for field in schema.fields() {
         let data_type = format!("{}", field.data_type);
         println!(
             "{0: <20} | {1: <8} | {2: <10}",
