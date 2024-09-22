@@ -8,5 +8,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.18", features = ["derive"] }
 deltalake = { version = "0.20.0", features = ["deltalake-aws", "s3", "datafusion"] }
+object_store = { version = "0.10.2", features = ["aws"] }
 thiserror = "1.0.63"
 tokio = { version = "1.40.0", features = ["macros"] }
+url = "2.5.2"

@@ -163,21 +163,12 @@ enum Error {
 
     #[error("Data fusion error")]
     DataFusion(#[from] DataFusionError),
-}
 
-async fn open_table(table_name: &str) -> Result<Table, Error> {
-    let extension = Path::new(table_name).extension().and_then(OsStr::to_str);
-    match extension {
-        Some("parquet") => Ok(Table::Parquet {
-            table_path: table_name.into(),
-        }),
-        Some(_other) => Err(Error::UnknownTableFormat),
-        None => {
-            let table =
-                deltalake::open_table_with_storage_options(table_name, Default::default()).await?;
-            Ok(Table::Delta(Arc::new(table)))
-        }
-    }
+    #[error("Object store error")]
+    ObjectStore(#[from] object_store::Error),
+
+    #[error("Missing bucket name")]
+    MissingBucket
 }
 
 #[derive(Subcommand)]
@@ -206,6 +197,42 @@ enum Commands {
     Query { table: String, query: String },
 }
 
+async fn register_bucket(ctx: &SessionContext, table_name: &str) -> Result<(), Error> {
+    let object_store_url = match url::Url::parse(table_name) {
+        Ok(url) => url,
+        Err(_) => return Ok(()),
+    };
+    match object_store_url.scheme() {
+        "s3" => {
+            let bucket_name = object_store_url.host_str().ok_or(Error::MissingBucket)?;
+            let s3 = Arc::new(object_store::aws::AmazonS3Builder::from_env()
+                .with_bucket_name(bucket_name)
+                .build()?);
+            let registration_url = url::Url::parse(&format!("s3://{}", bucket_name))
+                .expect("Should never fail to parse the bucket name registration URL");
+            ctx.register_object_store(&registration_url, s3);
+        },
+        _ => {},
+    }
+    Ok(())
+}
+
+async fn open_table(ctx: &SessionContext, table_name: &str) -> Result<Table, Error> {
+    register_bucket(ctx, table_name).await?;
+    let extension = Path::new(table_name).extension().and_then(OsStr::to_str);
+    match extension {
+        Some("parquet") => Ok(Table::Parquet {
+            table_path: table_name.into(),
+        }),
+        Some(_other) => Err(Error::UnknownTableFormat),
+        None => {
+            let table =
+                deltalake::open_table_with_storage_options(table_name, Default::default()).await?;
+            Ok(Table::Delta(Arc::new(table)))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -215,28 +242,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &cli.command {
         Commands::Files { table } => {
-            let table = open_table(&table).await?;
+            let table = open_table(&ctx, &table).await?;
             table.files().await?;
         }
         Commands::Schema { table } => {
-            let table = open_table(&table).await?;
+            let table = open_table(&ctx, &table).await?;
             table.schema(&ctx).await?;
         }
         Commands::Version { table } => {
-            let table = open_table(&table).await?;
+            let table = open_table(&ctx, &table).await?;
             table.version().await?;
         }
         Commands::Metadata { table } => {
-            let table = open_table(&table).await?;
+            let table = open_table(&ctx, &table).await?;
             table.metadata(&ctx).await?;
         }
         Commands::History { table, limit } => {
-            let table = open_table(&table).await?;
+            let table = open_table(&ctx, &table).await?;
             table.history(*limit).await?;
         }
         Commands::Query { table, query } => {
             let table_name = table;
-            let table = open_table(&table_name).await?;
+            let table = open_table(&ctx, &table_name).await?;
             table.query(&ctx, query).await?;
         }
     }
